@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Content Synthesizer — AI Research Tool</title>
+
+  <!-- Google Fonts: Syne (display) + JetBrains Mono (code/data feel) + Lora (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Tailwind CDN for utility classes -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    /* =========================================================
+       DESIGN TOKENS — Dark Editorial Terminal Aesthetic
+       Amber accent on near-black canvas, monospaced data feel.
+    ========================================================= */
+    :root {
+      --bg:          #0d0d0d;
+      --surface:     #141414;
+      --surface-2:   #1c1c1c;
+      --border:      #2a2a2a;
+      --border-hi:   #3d3d3d;
+      --amber:       #f5a623;
+      --amber-dim:   #b87a1a;
+      --amber-glow:  rgba(245,166,35,0.12);
+      --text:        #e8e8e4;
+      --text-muted:  #888880;
+      --text-faint:  #484840;
+      --green:       #4caf7d;
+      --red:         #e05c5c;
+      --font-display: 'Syne', sans-serif;
+      --font-mono:    'JetBrains Mono', monospace;
+      --font-body:    'Lora', Georgia, serif;
+    }
+
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { font-size: 16px; scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      /* Subtle grid-paper texture */
+      background-image:
+        linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* ── Scanline overlay for terminal feel ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0,0,0,0.06) 3px,
+        rgba(0,0,0,0.06) 4px
+      );
+      z-index: 100;
+    }
+
+    /* ── Typography ── */
+    .font-display { font-family: var(--font-display); }
+    .font-mono    { font-family: var(--font-mono); }
+    .font-body    { font-family: var(--font-body); }
+
+    /* ── Amber text & borders ── */
+    .text-amber   { color: var(--amber); }
+    .text-muted   { color: var(--text-muted); }
+    .border-amber { border-color: var(--amber); }
+
+    /* =========================================================
+       LAYOUT
+    ========================================================= */
+    .page-wrapper {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 3.5rem 1.5rem 6rem;
+    }
+
+    /* =========================================================
+       HEADER
+    ========================================================= */
+    .site-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 3.5rem;
+    }
+
+    .logo-mark {
+      width: 44px;
+      height: 44px;
+      border: 2px solid var(--amber);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      margin-top: 4px;
+      position: relative;
+    }
+    /* animated corner pip */
+    .logo-mark::after {
+      content: '';
+      position: absolute;
+      top: -5px; right: -5px;
+      width: 7px; height: 7px;
+      background: var(--amber);
+      animation: blink 1.4s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .logo-icon {
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      color: var(--amber);
+      letter-spacing: -2px;
+    }
+    .site-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.6rem, 4vw, 2.2rem);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+    .site-title span { color: var(--amber); }
+
+    .site-tagline {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-top: 0.35rem;
+    }
+
+    /* =========================================================
+       STATUS BAR
+    ========================================================= */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      padding: 0.55rem 0.85rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-faint);
+      letter-spacing: 0.08em;
+      margin-bottom: 2rem;
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      flex-shrink: 0;
+      box-shadow: 0 0 6px var(--green);
+    }
+    .status-dot.error { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .status-dot.loading {
+      background: var(--amber);
+      box-shadow: 0 0 6px var(--amber);
+      animation: pulse 0.8s ease-in-out infinite alternate;
+    }
+    @keyframes pulse { to { opacity: 0.3; } }
+
+    /* =========================================================
+       FORM CARD
+    ========================================================= */
+    .form-card {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 1.75rem;
+      position: relative;
+    }
+    /* Amber corner accent */
+    .form-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 3px; height: 40px;
+      background: var(--amber);
+    }
+
+    .form-label {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+      display: block;
+    }
+
+    #input-field {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      line-height: 1.65;
+      padding: 1rem 1.1rem;
+      resize: vertical;
+      min-height: 140px;
+      outline: none;
+      transition: border-color 0.2s;
+      caret-color: var(--amber);
+    }
+    #input-field::placeholder { color: var(--text-faint); }
+    #input-field:focus { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber-glow); }
+
+    /* ── Row below textarea ── */
+    .form-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 1rem;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .char-count {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--text-faint);
+    }
+    .char-count.over { color: var(--red); }
+
+    /* ── Synthesize button ── */
+    #submit-btn {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-weight: 500;
+      color: var(--bg);
+      background: var(--amber);
+      border: none;
+      padding: 0.7rem 1.8rem;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-shrink: 0;
+    }
+    #submit-btn:hover:not(:disabled) { background: #f7b84e; }
+    #submit-btn:active:not(:disabled) { transform: translateY(1px); }
+    #submit-btn:disabled {
+      background: var(--amber-dim);
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+
+    /* Spinner inside button */
+    .btn-spinner {
+      width: 13px; height: 13px;
+      border: 2px solid rgba(0,0,0,0.3);
+      border-top-color: var(--bg);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    #submit-btn.loading .btn-spinner { display: block; }
+    #submit-btn.loading .btn-label { opacity: 0.75; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* =========================================================
+       DETECTION BADGE (shows URL vs TEXT)
+    ========================================================= */
+    .detection-badge {
+      display: none;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.25rem 0.6rem;
+      border: 1px solid var(--border-hi);
+      color: var(--text-muted);
+      background: var(--surface-2);
+    }
+    .detection-badge.visible { display: flex; }
+    .detection-badge .badge-icon { color: var(--amber); }
+
+    /* =========================================================
+       ERROR BANNER
+    ========================================================= */
+    #error-banner {
+      display: none;
+      border: 1px solid var(--red);
+      background: rgba(224,92,92,0.08);
+      padding: 0.85rem 1.1rem;
+      margin-top: 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--red);
+      line-height: 1.5;
+    }
+    #error-banner.visible { display: block; }
+    #error-banner strong {
+      display: block;
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 0.3rem;
+      opacity: 0.75;
+    }
+
+    /* =========================================================
+       RESULTS CARD
+    ========================================================= */
+    #results-card {
+      margin-top: 2.5rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      pointer-events: none;
+    }
+    #results-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    /* ── Results header bar ── */
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.6rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+    .results-header-label {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .results-header-label::before {
+      content: '';
+      width: 6px; height: 6px;
+      background: var(--amber);
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .source-pill {
+      font-family: var(--font-mono);
+      font-size: 0.63rem;
+      padding: 0.18rem 0.55rem;
+      border: 1px solid var(--border-hi);
+      color: var(--text-muted);
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    /* ── Results body ── */
+    .results-body { padding: 1.75rem; }
+
+    /* Title */
+    #result-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.3rem, 3.5vw, 1.75rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      margin-bottom: 1.25rem;
+      padding-left: 1rem;
+      border-left: 3px solid var(--amber);
+    }
+
+    /* Section label */
+    .section-label {
+      font-family: var(--font-mono);
+      font-size: 0.63rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin-bottom: 0.55rem;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 1.5rem 0;
+    }
+
+    /* Summary */
+    #result-summary {
+      font-family: var(--font-body);
+      font-size: 1rem;
+      line-height: 1.8;
+      color: var(--text);
+      font-style: italic;
+    }
+
+    /* Key takeaways */
+    #result-takeaways {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .takeaway-item {
+      display: flex;
+      gap: 0.85rem;
+      align-items: flex-start;
+      animation: fadeSlideIn 0.35s ease both;
+    }
+
+    /* Stagger each takeaway */
+    .takeaway-item:nth-child(1) { animation-delay: 0.05s; }
+    .takeaway-item:nth-child(2) { animation-delay: 0.12s; }
+    .takeaway-item:nth-child(3) { animation-delay: 0.19s; }
+    .takeaway-item:nth-child(4) { animation-delay: 0.26s; }
+    .takeaway-item:nth-child(5) { animation-delay: 0.33s; }
+
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateX(-8px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    .takeaway-num {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--amber);
+      background: var(--amber-glow);
+      border: 1px solid rgba(245,166,35,0.25);
+      min-width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+      font-weight: 500;
+    }
+
+    .takeaway-text {
+      font-family: var(--font-body);
+      font-size: 0.93rem;
+      line-height: 1.65;
+      color: var(--text);
+    }
+
+    /* ── Results footer (metadata) ── */
+    .results-footer {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      padding: 0.75rem 1.1rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+    .meta-item {
+      font-family: var(--font-mono);
+      font-size: 0.63rem;
+      color: var(--text-faint);
+      letter-spacing: 0.07em;
+    }
+    .meta-item strong { color: var(--text-muted); font-weight: 500; }
+
+    /* =========================================================
+       SKELETON LOADER (while AI is thinking)
+    ========================================================= */
+    #skeleton-card {
+      margin-top: 2.5rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      display: none;
+    }
+    #skeleton-card.visible { display: block; }
+
+    .skeleton-header {
+      padding: 0.6rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+    .skeleton-body { padding: 1.75rem; }
+
+    .skel {
+      background: linear-gradient(
+        90deg,
+        var(--surface-2) 25%,
+        var(--border) 50%,
+        var(--surface-2) 75%
+      );
+      background-size: 400% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+      border-radius: 2px;
+    }
+    @keyframes shimmer {
+      from { background-position: 100% 0; }
+      to   { background-position: -100% 0; }
+    }
+
+    /* =========================================================
+       FOOTER
+    ========================================================= */
+    .site-footer {
+      margin-top: 4rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .site-footer p {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--text-faint);
+      letter-spacing: 0.07em;
+    }
+    .site-footer span { color: var(--amber); }
+
+    /* =========================================================
+       RESPONSIVE
+    ========================================================= */
+    @media (max-width: 500px) {
+      .page-wrapper { padding: 2rem 1rem 4rem; }
+      .form-footer { flex-direction: column; align-items: flex-start; }
+      #submit-btn { width: 100%; justify-content: center; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page-wrapper">
+
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <header class="site-header">
+      <div class="logo-mark" aria-hidden="true">
+        <span class="logo-icon">&Sigma;</span>
+      </div>
+      <div class="header-text">
+        <h1 class="site-title">Content <span>Synthesizer</span></h1>
+        <p class="site-tagline">AI-Powered Research Intelligence Layer v1.0</p>
+      </div>
+    </header>
+
+    <!-- ── Status Bar ─────────────────────────────────────── -->
+    <div class="status-bar" id="status-bar" role="status" aria-live="polite">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">SYSTEM READY — AWAITING INPUT</span>
+    </div>
+
+    <!-- ── Input Form Card ────────────────────────────────── -->
+    <div class="form-card" role="main">
+      <label class="form-label" for="input-field">
+        INPUT STREAM — URL or raw text
+      </label>
+
+      <textarea
+        id="input-field"
+        aria-label="Paste URL or raw text here"
+        placeholder="Paste raw text or a URL here...
+e.g.  https://example.com/article  or any block of text you want synthesized."
+        rows="6"
+        autocomplete="off"
+        spellcheck="false"
+      ></textarea>
+
+      <div class="form-footer">
+        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+          <!-- Live detection badge -->
+          <div class="detection-badge" id="detection-badge">
+            <span class="badge-icon" id="badge-icon">◆</span>
+            <span id="badge-text">URL DETECTED</span>
+          </div>
+          <!-- Character count -->
+          <span class="char-count" id="char-count">0 chars</span>
+        </div>
+
+        <button id="submit-btn" type="button" aria-label="Synthesize content">
+          <span class="btn-spinner" aria-hidden="true"></span>
+          <span class="btn-label" id="btn-label">Synthesize →</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Error Banner ───────────────────────────────────── -->
+    <div id="error-banner" role="alert">
+      <strong>⚠ Error</strong>
+      <span id="error-message">Something went wrong.</span>
+    </div>
+
+    <!-- ── Skeleton Loader ────────────────────────────────── -->
+    <div id="skeleton-card" aria-hidden="true">
+      <div class="skeleton-header">
+        <div class="skel" style="height:12px; width:40%; border-radius:2px;"></div>
+      </div>
+      <div class="skeleton-body">
+        <div class="skel" style="height:28px; width:70%; margin-bottom:1.5rem;"></div>
+        <div class="skel" style="height:11px; width:100%; margin-bottom:0.5rem;"></div>
+        <div class="skel" style="height:11px; width:90%; margin-bottom:0.5rem;"></div>
+        <div class="skel" style="height:11px; width:80%; margin-bottom:1.5rem;"></div>
+        <div class="skel" style="height:11px; width:55%; margin-bottom:0.5rem;"></div>
+        <div class="skel" style="height:11px; width:65%; margin-bottom:0.5rem;"></div>
+        <div class="skel" style="height:11px; width:50%;"></div>
+      </div>
+    </div>
+
+    <!-- ── Results Card ───────────────────────────────────── -->
+    <section id="results-card" aria-live="polite" aria-label="Synthesis Results">
+
+      <!-- Header bar -->
+      <div class="results-header">
+        <span class="results-header-label">SYNTHESIS OUTPUT</span>
+        <span class="source-pill" id="result-source-pill">—</span>
+      </div>
+
+      <!-- Main body -->
+      <div class="results-body">
+
+        <!-- Title -->
+        <h2 id="result-title">—</h2>
+
+        <!-- Summary -->
+        <p class="section-label">Abstract</p>
+        <p id="result-summary">—</p>
+
+        <div class="divider"></div>
+
+        <!-- Key Takeaways -->
+        <p class="section-label">Key Takeaways</p>
+        <ul id="result-takeaways"></ul>
+
+      </div>
+
+      <!-- Metadata footer -->
+      <div class="results-footer">
+        <span class="meta-item"><strong>Source</strong> <span id="meta-source">—</span></span>
+        <span class="meta-item"><strong>Processed</strong> <span id="meta-time">—</span></span>
+        <span class="meta-item"><strong>Takeaways</strong> <span id="meta-count">—</span></span>
+      </div>
+
+    </section>
+
+    <!-- ── Footer ─────────────────────────────────────────── -->
+    <footer class="site-footer">
+      <p>AI Content Synthesizer — <span>Powered by Google Gemini</span></p>
+      <p>Node.js + Express + Cheerio</p>
+    </footer>
+
+  </div><!-- /page-wrapper -->
+
+
+  <!-- ================================================================
+       FRONTEND JAVASCRIPT
+       ================================================================
+       Data flow:
+         1. User types → live detection badge + char counter update
+         2. Click "Synthesize" → validate → POST /api/summarize
+         3. Show skeleton loader during request
+         4. On success → render results card with animation
+         5. On error → show error banner + reset UI
+  ================================================================ -->
+  <script>
+    // ── Element refs ──────────────────────────────────────────────────────────
+    const inputField     = document.getElementById('input-field');
+    const submitBtn      = document.getElementById('submit-btn');
+    const btnLabel       = document.getElementById('btn-label');
+    const charCount      = document.getElementById('char-count');
+    const detectionBadge = document.getElementById('detection-badge');
+    const badgeIcon      = document.getElementById('badge-icon');
+    const badgeText      = document.getElementById('badge-text');
+    const errorBanner    = document.getElementById('error-banner');
+    const errorMessage   = document.getElementById('error-message');
+    const skeletonCard   = document.getElementById('skeleton-card');
+    const resultsCard    = document.getElementById('results-card');
+    const statusDot      = document.getElementById('status-dot');
+    const statusText     = document.getElementById('status-text');
+
+    // Results sub-elements
+    const resultTitle      = document.getElementById('result-title');
+    const resultSummary    = document.getElementById('result-summary');
+    const resultTakeaways  = document.getElementById('result-takeaways');
+    const resultSourcePill = document.getElementById('result-source-pill');
+    const metaSource       = document.getElementById('meta-source');
+    const metaTime         = document.getElementById('meta-time');
+    const metaCount        = document.getElementById('meta-count');
+
+    // Max input length (soft limit — server also truncates at 12 000 chars)
+    const MAX_CHARS = 15_000;
+
+    // ── Utility: check if a string looks like a URL ───────────────────────────
+    function looksLikeUrl(str) {
+      try {
+        const url = new URL(str.trim());
+        return url.protocol === 'http:' || url.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    }
+
+    // ── Utility: set status bar ───────────────────────────────────────────────
+    function setStatus(mode, text) {
+      // mode: 'ready' | 'loading' | 'error' | 'success'
+      statusDot.className = 'status-dot';
+      if (mode === 'loading') statusDot.classList.add('loading');
+      if (mode === 'error')   statusDot.classList.add('error');
+      statusText.textContent = text.toUpperCase();
+    }
+
+    // ── Utility: show/hide error banner ──────────────────────────────────────
+    function showError(msg) {
+      errorMessage.textContent = msg;
+      errorBanner.classList.add('visible');
+    }
+    function hideError() {
+      errorBanner.classList.remove('visible');
+    }
+
+    // ── Utility: format timestamp ─────────────────────────────────────────────
+    function formatNow() {
+      return new Date().toLocaleString('en-US', {
+        month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+      });
+    }
+
+    // ── Live input event: detection + char counter ────────────────────────────
+    inputField.addEventListener('input', () => {
+      const val  = inputField.value;
+      const len  = val.length;
+      const isUrl = looksLikeUrl(val.trim());
+
+      // Char counter
+      charCount.textContent = `${len.toLocaleString()} chars`;
+      charCount.classList.toggle('over', len > MAX_CHARS);
+
+      // Detection badge
+      if (val.trim().length > 0) {
+        detectionBadge.classList.add('visible');
+        if (isUrl) {
+          badgeIcon.textContent = '◆';
+          badgeText.textContent = 'URL DETECTED';
+        } else {
+          badgeIcon.textContent = '◈';
+          badgeText.textContent = 'RAW TEXT';
+        }
+      } else {
+        detectionBadge.classList.remove('visible');
+      }
+    });
+
+    // ── Submit handler ─────────────────────────────────────────────────────────
+    submitBtn.addEventListener('click', async () => {
+      const input = inputField.value.trim();
+
+      // ── Client-side validation ────────────────────────────────────────────
+      if (!input) {
+        showError('Please paste some text or a URL before synthesizing.');
+        inputField.focus();
+        return;
+      }
+      if (input.length < 10 && !looksLikeUrl(input)) {
+        showError('Input is too short. Paste at least a sentence or two of content.');
+        inputField.focus();
+        return;
+      }
+      if (input.length > MAX_CHARS) {
+        showError(`Input exceeds the ${MAX_CHARS.toLocaleString()}-character soft limit. Please trim the content.`);
+        return;
+      }
+
+      // ── Reset UI state ────────────────────────────────────────────────────
+      hideError();
+      resultsCard.classList.remove('visible');
+
+      // Show skeleton, loading button state, update status
+      skeletonCard.classList.add('visible');
+      submitBtn.disabled = true;
+      submitBtn.classList.add('loading');
+      btnLabel.textContent = 'Synthesizing...';
+      setStatus('loading', 'Processing request — AI synthesis in progress');
+
+      // Record start time for latency display
+      const startTime = Date.now();
+
+      try {
+        // ── POST to backend ─────────────────────────────────────────────────
+        const response = await fetch('/api/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input }),
+        });
+
+        // Parse response body regardless of status code
+        const payload = await response.json();
+
+        if (!response.ok || !payload.success) {
+          // Server returned a structured error
+          throw new Error(payload.error || `Server error: HTTP ${response.status}`);
+        }
+
+        // ── Render results ──────────────────────────────────────────────────
+        const { data, sourceType } = payload;
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+
+        // Populate title
+        resultTitle.textContent = data.title || 'Untitled';
+
+        // Populate summary
+        resultSummary.textContent = data.summary || 'No summary available.';
+
+        // Populate key takeaways — clear old items first
+        resultTakeaways.innerHTML = '';
+        (data.key_takeaways || []).forEach((point, i) => {
+          const li = document.createElement('li');
+          li.className = 'takeaway-item';
+          li.innerHTML = `
+            <span class="takeaway-num" aria-hidden="true">${String(i + 1).padStart(2, '0')}</span>
+            <span class="takeaway-text">${escapeHtml(point)}</span>
+          `;
+          resultTakeaways.appendChild(li);
+        });
+
+        // Source pill
+        resultSourcePill.textContent = sourceType === 'url' ? '⌁ URL Source' : '⌁ Text Input';
+
+        // Metadata footer
+        metaSource.textContent = sourceType === 'url'
+          ? truncateMiddle(input, 40)
+          : `${input.length.toLocaleString()} characters`;
+        metaTime.textContent  = `${formatNow()} (${elapsed}s)`;
+        metaCount.textContent = `${(data.key_takeaways || []).length} points`;
+
+        // Animate in the results card, hide skeleton
+        skeletonCard.classList.remove('visible');
+        resultsCard.classList.add('visible');
+        resultsCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        setStatus('ready', `Synthesis complete — ${elapsed}s latency`);
+
+      } catch (err) {
+        // ── Error state ─────────────────────────────────────────────────────
+        skeletonCard.classList.remove('visible');
+        showError(err.message || 'An unexpected error occurred. Please try again.');
+        setStatus('error', 'Synthesis failed — see error below');
+        console.error('[ContentSynthesizer] Error:', err);
+
+      } finally {
+        // Always re-enable the button regardless of outcome
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('loading');
+        btnLabel.textContent = 'Synthesize →';
+      }
+    });
+
+    // ── Allow Ctrl+Enter / Cmd+Enter to submit ────────────────────────────────
+    inputField.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        submitBtn.click();
+      }
+    });
+
+    // ── Utility: escape HTML to prevent XSS in takeaway text ─────────────────
+    function escapeHtml(str) {
+      const el = document.createElement('div');
+      el.textContent = str;
+      return el.innerHTML;
+    }
+
+    // ── Utility: shorten long strings for display ─────────────────────────────
+    function truncateMiddle(str, maxLen) {
+      if (str.length <= maxLen) return str;
+      const half = Math.floor((maxLen - 3) / 2);
+      return str.slice(0, half) + '...' + str.slice(-half);
+    }
+  </script>
+</body>
+</html>
